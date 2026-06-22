@@ -6,10 +6,21 @@ Public source repo for the Webflow + OrderPort scripts used on Dendric Estate.
 
 - `scripts/dendric-shop-op.js` - Shop page filters, variants, quantity controls, add to cart, and nav OrderPort bridge.
 - `scripts/dendric-product-op.js` - Product template variants, quantity controls, add to cart, and nav OrderPort bridge.
+- `scripts/dendric-nav-op.js` - Global nav OrderPort bridge for login and cart links on pages without shop/product commerce controls.
 
 ## Webflow Usage
 
 This repo is public so Webflow can load the scripts through jsDelivr.
+
+Site-wide footer:
+
+```html
+<script
+  defer
+  src="https://cdn.jsdelivr.net/gh/blackpixelca/dendric-webflow-orderport-scripts@6667a52cbbe892de4e75ed27503431832e50c084/scripts/dendric-nav-op.js"
+  integrity="sha384-LuGEIaRvLn7wZNuSZLCcOvZVhOuT9Tkxo/RpYh+Jxnz5jonvlokCohIqjtdw/XyB"
+  crossorigin="anonymous"></script>
+```
 
 Shop page footer:
 
