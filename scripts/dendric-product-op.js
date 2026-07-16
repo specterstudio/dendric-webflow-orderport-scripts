@@ -57,6 +57,8 @@
       bootstrap.setAttribute("data-op-bootstrap-layer", "true");
       bootstrap.textContent =
         '@import url("https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css") layer(op-bootstrap);' +
+        ":root{--bs-body-font-family:var(--_typography---font--mono-family,\"Silka Mono\",monospace)}" +
+        "body{font-family:var(--_typography---font--mono-family,\"Silka Mono\",monospace)!important}" +
         ".button_main_text a{color:inherit;text-decoration:inherit}";
       document.head.append(bootstrap);
     }
