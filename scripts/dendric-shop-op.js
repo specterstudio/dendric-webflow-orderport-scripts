@@ -64,6 +64,85 @@
     else finsweet?.load?.("list");
   };
 
+  const setupShopGridGuard = () => {
+    if (window.__dendricShopGridGuard) return;
+
+    const grid = document.querySelector(".shop_wrap .products_cms_grid");
+    if (!grid) return;
+
+    let cachedItems = [];
+    let observer;
+    let restoring = false;
+    let stopped = false;
+    const timers = [];
+
+    const getItems = () => {
+      return [...grid.children].filter((element) => element.classList?.contains("products_cms_item"));
+    };
+
+    const capture = () => {
+      const items = getItems();
+      if (items.length) cachedItems = items;
+      return items;
+    };
+
+    const restore = () => {
+      if (stopped || restoring) return;
+
+      const items = capture();
+      if (items.length) {
+        if (grid.style.display === "none") grid.style.display = "";
+        return;
+      }
+
+      if (!cachedItems.length) return;
+
+      restoring = true;
+      const fragment = document.createDocumentFragment();
+      cachedItems.forEach((item) => fragment.append(item));
+      grid.replaceChildren(fragment);
+      grid.style.display = "";
+
+      requestAnimationFrame(() => {
+        restartFinsweetList();
+        restoring = false;
+        capture();
+      });
+    };
+
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      observer?.disconnect();
+      timers.forEach((timer) => window.clearTimeout(timer));
+      document.removeEventListener("pointerdown", stopForFiltering, true);
+      document.removeEventListener("input", stopForFiltering, true);
+    };
+
+    const stopForFiltering = (event) => {
+      if (event.target.closest(".shop_filters, #From, #To")) stop();
+    };
+
+    capture();
+
+    [0, 250, 750, 1500, 3000, 5000].forEach((delay) => {
+      timers.push(window.setTimeout(restore, delay));
+    });
+
+    observer = new MutationObserver(() => requestAnimationFrame(restore));
+    observer.observe(grid, {
+      childList: true,
+      attributes: true,
+      attributeFilter: ["style"],
+    });
+
+    document.addEventListener("pointerdown", stopForFiltering, true);
+    document.addEventListener("input", stopForFiltering, true);
+    timers.push(window.setTimeout(stop, 6500));
+
+    window.__dendricShopGridGuard = { restore, stop };
+  };
+
   const getItemSlug = (item) => {
     const link = item.querySelector("a[href*='/products/']");
     if (!link) return "";
@@ -781,6 +860,8 @@
       syncCard(card);
     });
   };
+
+  setupShopGridGuard();
 
   ready(() => {
     ensureOrderPortShell();
