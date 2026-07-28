@@ -17,8 +17,8 @@ Site-wide footer:
 ```html
 <script
   defer
-  src="https://cdn.jsdelivr.net/gh/blackpixelca/dendric-webflow-orderport-scripts@ec6d1992bb4738e287efa7f38c3d8b27ce100f1d/scripts/dendric-nav-op.js"
-  integrity="sha384-nht68GhBJp0ZVgQNg7URarctDtkSVQGWVOgoRTyqXPeLrzMzZRql+0ycXi2lrRta"
+  src="https://cdn.jsdelivr.net/gh/specterstudio/dendric-webflow-orderport-scripts@d0c00996a626ee4c60ca4abdacf37dfedb802bf9/scripts/dendric-nav-op.js"
+  integrity="sha384-GpBGbXWakVgXmzrpQF+da7J0zJ6gYBULRzLTAOBeHhy0rPAW8jvgZy2OcneVRNkt"
   crossorigin="anonymous"></script>
 ```
 
@@ -27,8 +27,8 @@ Shop page footer:
 ```html
 <script
   defer
-  src="https://cdn.jsdelivr.net/gh/blackpixelca/dendric-webflow-orderport-scripts@ec6d1992bb4738e287efa7f38c3d8b27ce100f1d/scripts/dendric-shop-op.js"
-  integrity="sha384-+xRu7uKN3jA5CluT1Og0kgFWq+wpcwTPAgO0Vran6DR62Csk3/cOlbfHxpbyPYtf"
+  src="https://cdn.jsdelivr.net/gh/specterstudio/dendric-webflow-orderport-scripts@d0c00996a626ee4c60ca4abdacf37dfedb802bf9/scripts/dendric-shop-op.js"
+  integrity="sha384-m4Pdby8Zp30Ddsi5JA7dEvdqIzzQW2ARMnUq23mIi7ARIkD63xjzLpMy/FogrQmF"
   crossorigin="anonymous"></script>
 ```
 
@@ -37,8 +37,8 @@ Product template footer:
 ```html
 <script
   defer
-  src="https://cdn.jsdelivr.net/gh/blackpixelca/dendric-webflow-orderport-scripts@ec6d1992bb4738e287efa7f38c3d8b27ce100f1d/scripts/dendric-product-op.js"
-  integrity="sha384-Ma0zsMo/5Jwpr3D51/m2es53SRSOTLAWxOM6h+XEV2aaXPnZ0GDEEp/oXhsaYO0+"
+  src="https://cdn.jsdelivr.net/gh/specterstudio/dendric-webflow-orderport-scripts@d0c00996a626ee4c60ca4abdacf37dfedb802bf9/scripts/dendric-product-op.js"
+  integrity="sha384-BybNucAATqXQx97gs1Rz00E3K4568otFBJ9e3YclQ0h90OvQrYSDj5ko801a3HpM"
   crossorigin="anonymous"></script>
 ```
 
