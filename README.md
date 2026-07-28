@@ -6,6 +6,7 @@ Public source repo for the Webflow + OrderPort scripts used on Dendric Estate.
 
 - `scripts/dendric-shop-op.js` - Shop page filters, variants, quantity controls, add to cart, and nav OrderPort bridge.
 - `scripts/dendric-product-op.js` - Product template variants, quantity controls, add to cart, and nav OrderPort bridge.
+- `scripts/dendric-product-gallery.js` - Product template GSAP gallery navigation and autoplay.
 - `scripts/dendric-nav-op.js` - Global nav OrderPort bridge for login and cart links on pages without shop/product commerce controls.
 
 ## Webflow Usage
@@ -42,9 +43,20 @@ Product template footer:
   crossorigin="anonymous"></script>
 ```
 
+Product template gallery, after GSAP, CustomEase, and Observer:
+
+```html
+<script
+  defer
+  src="https://cdn.jsdelivr.net/gh/specterstudio/dendric-webflow-orderport-scripts@5b9303d5121bdb3a4047c4e73d9f78ff6ec17103/scripts/dendric-product-gallery.js"
+  integrity="sha384-5MgKPKXt2/f2LYOJB4fMQxy+ngodIQpenN+zm1Z7SJlry8SifeaYC7KXcipqHiiU"
+  crossorigin="anonymous"></script>
+```
+
 ## Notes
 
 - OrderPort startup is loaded by each script only if it is not already present.
 - Native OrderPort controls are kept visually hidden; Webflow-built UI controls remain the visible interface.
 - Add to cart uses OrderPort's native cart facade first so the embedded side cart state updates immediately.
 - Product availability and SKUs are configured in each script's `productMap`.
+- Replace the Product Template's two inline slideshow scripts with the hosted gallery tag; do not load both implementations together.
