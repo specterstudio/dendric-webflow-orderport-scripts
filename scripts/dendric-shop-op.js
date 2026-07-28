@@ -184,6 +184,62 @@
     target.click();
   };
 
+  const setupNavCartCount = () => {
+    const bridgeKey = "__dendricOpCartCountBridge";
+    const existingBridge = window[bridgeKey];
+
+    if (existingBridge) {
+      existingBridge.start();
+      return;
+    }
+
+    let observedToggle;
+    let observer;
+
+    const getCount = () => {
+      const toggle = document.querySelector("op-side-cart-toggle");
+      const root = toggle?.shadowRoot || toggle;
+      const label = getText(root?.querySelector(".text")) || getText(toggle);
+      const match = label.match(/\((\d+)\)/) || label.match(/\b(\d+)\b/);
+
+      return match ? Number.parseInt(match[1], 10) : null;
+    };
+
+    const sync = () => {
+      const count = getCount();
+      if (!Number.isInteger(count)) return;
+
+      queryAll("[op-cart-count]").forEach((badge) => {
+        badge.textContent = String(count);
+      });
+
+      queryAll("[op-cart-open]").forEach((cart) => {
+        cart.setAttribute("aria-label", `Open cart, ${count} ${count === 1 ? "item" : "items"}`);
+      });
+    };
+
+    const start = () => {
+      const toggle = document.querySelector("op-side-cart-toggle");
+
+      if (!toggle) {
+        window.setTimeout(start, 100);
+        return;
+      }
+
+      if (toggle !== observedToggle) {
+        observer?.disconnect();
+        observedToggle = toggle;
+        observer = new MutationObserver(sync);
+        observer.observe(toggle, { childList: true, subtree: true, characterData: true });
+      }
+
+      sync();
+    };
+
+    window[bridgeKey] = { start, sync };
+    start();
+  };
+
   const isOrderPortCartOpen = () => {
     return !!document.querySelector("op-side-cart .side-cart.open");
   };
@@ -732,6 +788,7 @@
     setupNavOrderPort();
     window.setTimeout(setupPriceFilters, 600);
     loadOrderPortStartup().then(() => {
+      setupNavCartCount();
       setupShopOrderPortCards();
       window.setTimeout(setupShopOrderPortCards, 900);
     });
