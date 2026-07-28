@@ -28,8 +28,8 @@ Shop page footer:
 ```html
 <script
   defer
-  src="https://cdn.jsdelivr.net/gh/specterstudio/dendric-webflow-orderport-scripts@d0c00996a626ee4c60ca4abdacf37dfedb802bf9/scripts/dendric-shop-op.js"
-  integrity="sha384-m4Pdby8Zp30Ddsi5JA7dEvdqIzzQW2ARMnUq23mIi7ARIkD63xjzLpMy/FogrQmF"
+  src="https://cdn.jsdelivr.net/gh/specterstudio/dendric-webflow-orderport-scripts@809661f6bc57fb97fa2f90543ed6cc8151ced7c1/scripts/dendric-shop-op.js"
+  integrity="sha384-A/5aCy/aCYPK8nUwvbfmURejkzzSJ9lLIHfmdmajid/9SUYQxNcbzQOba8Cd2gGS"
   crossorigin="anonymous"></script>
 ```
 
@@ -59,4 +59,5 @@ Product template gallery, after GSAP, CustomEase, and Observer:
 - Native OrderPort controls are kept visually hidden; Webflow-built UI controls remain the visible interface.
 - Add to cart uses OrderPort's native cart facade first so the embedded side cart state updates immediately.
 - Product availability and SKUs are configured in each script's `productMap`.
+- The Shop grid startup guard is included in `dendric-shop-op.js`; remove the former inline `__dendricShopGridGuard` script from the Shop page.
 - Replace the Product Template's two inline slideshow scripts with the hosted gallery tag; do not load both implementations together.
