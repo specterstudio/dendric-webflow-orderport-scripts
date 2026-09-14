@@ -81,6 +81,8 @@ node --check scripts/dendric-product-op.js
 node --test test/phase1-dom-tests.js
 ```
 
+For browser-level pre-deploy verification, serve the repository locally and open `test/phase1-browser-fixture.html`. The fixture loads the actual shop script and prints JSON confirming checkout handoff, image drag prevention, price token matching, and grid-guard behavior.
+
 ## Phase 2 Webflow Update Checklist
 
 Do not update these live pins until Phase 2. After the Phase 1 pull request is merged, replace `<MERGED_PHASE_1_COMMIT_SHA>` with the merged commit SHA that contains the Phase 1 script changes.
