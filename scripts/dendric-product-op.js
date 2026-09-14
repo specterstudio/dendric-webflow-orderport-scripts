@@ -30,6 +30,7 @@
 
   const queryAll = (selector, scope = document) => [...scope.querySelectorAll(selector)];
   const getText = (element) => (element?.textContent || "").replace(/\s+/g, " ").trim();
+  const ORDERPORT_ORIGIN = "https://dendricestate.orderport.net";
 
   const createElement = (tag, attrs = {}) => {
     const element = document.createElement(tag);
@@ -127,6 +128,180 @@
     });
 
     return orderPortReadyPromise;
+  };
+
+  const setupOrderPortCartHandoff = () => {
+    const bridgeKey = "__dendricOpCartHandoff";
+    const existingBridge = window[bridgeKey];
+
+    if (existingBridge) {
+      existingBridge.start();
+      return;
+    }
+
+    let observer;
+    const observedRoots = new WeakSet();
+    const label = "Review Cart & Checkout";
+
+    const getReviewCartUrl = (href) => {
+      if (!href) return "";
+
+      try {
+        const url = new URL(href, ORDERPORT_ORIGIN);
+        if (url.origin !== ORDERPORT_ORIGIN) return "";
+
+        const path = url.pathname.replace(/\/+$/, "").toLowerCase();
+        if (path !== "/cart/checkout") return "";
+
+        url.pathname = "/cart";
+        return url.href;
+      } catch (error) {
+        return "";
+      }
+    };
+
+    const labelCheckoutLink = (anchor) => {
+      const textTarget = anchor.querySelector(".button_main_text,span,button") || anchor;
+      if (getText(textTarget) && /checkout|proceed/i.test(getText(textTarget))) {
+        textTarget.textContent = label;
+      }
+
+      anchor.setAttribute("aria-label", label);
+      anchor.setAttribute("title", label);
+    };
+
+    const patchCheckoutLink = (anchor) => {
+      if (!anchor?.matches?.("a[href]")) return;
+
+      const href = anchor.getAttribute("href");
+      const reviewCartUrl = getReviewCartUrl(href || anchor.href);
+      if (!reviewCartUrl) return;
+
+      anchor.href = reviewCartUrl;
+      anchor.dataset.dendricOpCheckoutHandoff = "true";
+      labelCheckoutLink(anchor);
+
+      if (anchor.dataset.dendricOpCheckoutClickReady) return;
+      anchor.dataset.dendricOpCheckoutClickReady = "true";
+
+      anchor.addEventListener("click", (event) => {
+        const targetUrl = anchor.href;
+        if (!targetUrl) return;
+
+        event.preventDefault();
+        window.location.assign(targetUrl);
+      });
+    };
+
+    const scan = (scope = document) => {
+      if (!scope?.querySelectorAll) return;
+
+      if (scope.matches?.("a[href]")) patchCheckoutLink(scope);
+      queryAll("a[href]", scope).forEach(patchCheckoutLink);
+      queryAll("op-side-cart,op-side-cart-details", scope).forEach((element) => {
+        if (element.shadowRoot) scan(element.shadowRoot);
+      });
+    };
+
+    const observe = (root) => {
+      if (!root || observedRoots.has(root)) return;
+      observedRoots.add(root);
+      observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
+    };
+
+    const start = () => {
+      if (!document.body) return;
+
+      if (!observer) {
+        observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            if (mutation.type === "attributes") {
+              patchCheckoutLink(mutation.target);
+              return;
+            }
+
+            mutation.addedNodes.forEach((node) => {
+              if (node.nodeType !== 1) return;
+              scan(node);
+              if (node.shadowRoot) {
+                scan(node.shadowRoot);
+                observe(node.shadowRoot);
+              }
+            });
+          });
+        });
+      }
+
+      observe(document.body);
+      queryAll("op-side-cart,op-side-cart-details").forEach((element) => {
+        scan(element);
+        if (element.shadowRoot) {
+          scan(element.shadowRoot);
+          observe(element.shadowRoot);
+        }
+      });
+      scan(document);
+    };
+
+    window[bridgeKey] = { start, scan, getReviewCartUrl };
+    start();
+  };
+
+  const setupImageDragPrevention = () => {
+    const bridgeKey = "__dendricImageDragPrevention";
+    const existingBridge = window[bridgeKey];
+
+    if (existingBridge) {
+      existingBridge.start();
+      return;
+    }
+
+    let observer;
+
+    const isAllowedDragImage = (image) => image.closest("[data-dendric-allow-image-drag]");
+
+    const patchImage = (image) => {
+      if (isAllowedDragImage(image)) return;
+      image.draggable = false;
+      image.setAttribute("draggable", "false");
+      image.style.webkitUserDrag = "none";
+    };
+
+    const scan = (scope = document) => {
+      if (!scope?.querySelectorAll) return;
+      if (scope.matches?.("img")) patchImage(scope);
+      queryAll("img", scope).forEach(patchImage);
+    };
+
+    const start = () => {
+      if (!document.body) return;
+
+      scan(document);
+
+      if (!observer) {
+        observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+              if (node.nodeType === 1) scan(node);
+            });
+          });
+        });
+
+        document.addEventListener(
+          "dragstart",
+          (event) => {
+            const image = event.target?.closest?.("img");
+            if (image && !isAllowedDragImage(image)) event.preventDefault();
+          },
+          true,
+        );
+      }
+
+      observer.observe(document.body, { childList: true, subtree: true });
+    };
+
+    window[bridgeKey] = { start, scan };
+    start();
   };
 
   const clickOrderPortCartToggle = () => {
@@ -570,8 +745,11 @@
 
   ready(() => {
     ensureOrderPortShell();
+    setupImageDragPrevention();
+    setupOrderPortCartHandoff();
     setupNavOrderPort();
     loadOrderPortStartup().then(() => {
+      setupOrderPortCartHandoff();
       setupNavCartCount();
       setupProductOrderPort();
       window.setTimeout(setupProductOrderPort, 900);

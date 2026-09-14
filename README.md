@@ -61,3 +61,68 @@ Product template gallery, after GSAP, CustomEase, and Observer:
 - Product availability and SKUs are configured in each script's `productMap`.
 - The Shop grid startup guard is included in `dendric-shop-op.js`; remove the former inline `__dendricShopGridGuard` script from the Shop page.
 - Replace the Product Template's two inline slideshow scripts with the hosted gallery tag; do not load both implementations together.
+
+## Phase 1 Repair Notes
+
+Phase 1 is implemented only in this repository. It does not change Webflow, OrderPort-hosted scripts, OrderPort catalog data, checkout templates, `config.js`, `bundle.js`, or `startup.js`.
+
+- Checkout handoff: the nav, shop, and product integrations now watch for OrderPort-rendered `/cart/checkout` links and rewrite them to `/cart` while preserving the existing query string, including `altsid`. The visible/accessible label becomes "Review Cart & Checkout". This is a tested client-side mitigation so OrderPort's full cart page becomes the first-party handoff before auth/checkout, but it still needs full guest-checkout verification in Phase 2.
+- Cart integration: the existing native OrderPort cart facade path remains in place, and the direct REST fallback remains in place. Phase 1 does not expand dependence on undocumented Angular internals.
+- Shop filters: product and price metadata are prepared before coalesced Finsweet list restarts. The grid guard no longer stops permanently after the first filter interaction; it only restores cached product cards when no filter is active, avoiding forced restoration for legitimate zero-result filters.
+- Price filters: script-controlled price matching no longer expands the requested range beyond the visible min/max values.
+- Image dragging: the global integration disables native image dragging for normal images, applies to dynamically inserted images, and leaves links, buttons, scrolling, and pointer behavior intact.
+
+Local verification:
+
+```sh
+node --check scripts/dendric-nav-op.js
+node --check scripts/dendric-shop-op.js
+node --check scripts/dendric-product-op.js
+node --test test/phase1-dom-tests.js
+```
+
+## Phase 2 Webflow Update Checklist
+
+Do not update these live pins until Phase 2. After the Phase 1 pull request is merged, replace `<MERGED_PHASE_1_COMMIT_SHA>` with the merged commit SHA that contains the Phase 1 script changes.
+
+Site-wide footer:
+
+```html
+<script
+  defer
+  src="https://cdn.jsdelivr.net/gh/specterstudio/dendric-webflow-orderport-scripts@<MERGED_PHASE_1_COMMIT_SHA>/scripts/dendric-nav-op.js"
+  integrity="sha384-YwlaXCNZaGu4Y3Tp0sTh7blglWleoe75XWJq6SoYIJd3E6Ho8ACENHAqRQMUNA+0"
+  crossorigin="anonymous"></script>
+```
+
+Shop page footer:
+
+```html
+<script
+  defer
+  src="https://cdn.jsdelivr.net/gh/specterstudio/dendric-webflow-orderport-scripts@<MERGED_PHASE_1_COMMIT_SHA>/scripts/dendric-shop-op.js"
+  integrity="sha384-/7eIl4ycr8MjKdr6gPd2e9UPMPC4VVvXSUVfh6IIagOak8zKeNpK/ShVfm+wbXFB"
+  crossorigin="anonymous"></script>
+```
+
+Product template footer:
+
+```html
+<script
+  defer
+  src="https://cdn.jsdelivr.net/gh/specterstudio/dendric-webflow-orderport-scripts@<MERGED_PHASE_1_COMMIT_SHA>/scripts/dendric-product-op.js"
+  integrity="sha384-6TlQxdyDwFLUwN/hJJZB+eNWUFVBVWl7M9r2V2Jn3NskBLtiggQumABd7DTWq9Vb"
+  crossorigin="anonymous"></script>
+```
+
+The product gallery script is unchanged in Phase 1 and can keep its current pin unless Phase 2 changes it.
+
+Phase 2 Webflow work still needed:
+
+- Update Webflow's pinned jsDelivr script references and SRI hashes.
+- Review and repair mobile filter layout/drawer behavior in Webflow.
+- Ensure products appear before the filter interface on mobile.
+- Add state-availability notices in the age gate and shop where Webflow controls the markup.
+- Publish once, then run end-to-end mobile and desktop testing.
+- Fully verify guest checkout after the `/cart` handoff.
+- Add any checkout-page messaging that can only be changed in OrderPort.
