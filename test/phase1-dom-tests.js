@@ -183,3 +183,12 @@ test("shop size metadata includes only purchasable variants", () => {
   assert.deepEqual(Array.from(catalog.getAvailableSizes("cider---02-03")), []);
   assert.deepEqual(Array.from(catalog.getAvailableSizes("cider---03-03")), []);
 });
+
+test("shop price range recognizes Webflow slider limits", () => {
+  const { context } = runScript("dendric-shop-op.js");
+  const catalog = context.window.__dendricShopCatalog;
+
+  assert.equal(catalog.isPriceRangeActive("9", "80", "9", "80"), false);
+  assert.equal(catalog.isPriceRangeActive("30", "80", "9", "80"), true);
+  assert.equal(catalog.isPriceRangeActive("9", "15", "9", "80"), true);
+});

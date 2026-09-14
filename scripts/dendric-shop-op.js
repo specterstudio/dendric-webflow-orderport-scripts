@@ -66,6 +66,18 @@
     element.dispatchEvent(new Event("change", { bubbles: true }));
   };
 
+  const isPriceRangeActive = (fromValue, toValue, rangeMin, rangeMax) => {
+    const min = Number.parseFloat(fromValue);
+    const max = Number.parseFloat(toValue);
+    const configuredMin = Number.parseFloat(rangeMin);
+    const configuredMax = Number.parseFloat(rangeMax);
+
+    if (Number.isFinite(min) && Number.isFinite(configuredMin) && min > configuredMin) return true;
+    if (Number.isFinite(max) && Number.isFinite(configuredMax) && max < configuredMax) return true;
+
+    return false;
+  };
+
   const restartFinsweetList = () => {
     const finsweet = window.FinsweetAttributes;
     if (finsweet?.modules?.list?.restart) finsweet.modules.list.restart();
@@ -88,13 +100,18 @@
 
     const fromInput = document.querySelector("#From");
     const toInput = document.querySelector("#To");
-    const fromValue = Number.parseFloat(fromInput?.value);
-    const toValue = Number.parseFloat(toInput?.value);
-    const fromMin = Number.parseFloat(fromInput?.min);
-    const toMax = Number.parseFloat(toInput?.max);
+    const rangeWrapper = fromInput?.closest("[fs-rangeslider-element='wrapper']");
 
-    if (Number.isFinite(fromValue) && Number.isFinite(fromMin) && fromValue > fromMin) return true;
-    if (Number.isFinite(toValue) && Number.isFinite(toMax) && toValue < toMax) return true;
+    if (
+      isPriceRangeActive(
+        fromInput?.value,
+        toInput?.value,
+        rangeWrapper?.getAttribute("fs-rangeslider-min"),
+        rangeWrapper?.getAttribute("fs-rangeslider-max"),
+      )
+    ) {
+      return true;
+    }
 
     return false;
   };
@@ -209,6 +226,7 @@
     getAvailableSizes,
     getProductSlugByName: (name) => productSlugByName[name] || "",
     getProductType: (slug) => productTypeBySlug[slug] || "",
+    isPriceRangeActive,
   };
 
   const ensureOrderPortShell = () => {
@@ -810,23 +828,30 @@
     const filterForm = document.querySelector(".shop_wrap [fs-list-element='filters']");
     const fromInput = document.querySelector("#From");
     const toInput = document.querySelector("#To");
+    const rangeWrapper = fromInput?.closest("[fs-rangeslider-element='wrapper']");
 
-    if (!filterForm || !fromInput || !toInput || filterForm.dataset.dendricPriceReady) return;
+    if (!filterForm || !fromInput || !toInput || !rangeWrapper || filterForm.dataset.dendricPriceReady) return;
 
     filterForm.dataset.dendricPriceReady = "true";
 
     const priceMap = new Map();
     const parsePrice = (element) => parseFloat(element.textContent.replace(/[^0-9.-]/g, ""));
     const priceToken = (price) => `p${Math.round(price * 100)}`;
+    const unpricedToken = "p-unavailable";
+    const noMatchToken = "p-no-match";
 
     queryAll(".shop_wrap .products_cms_item").forEach((item) => {
-      const prices = queryAll("[variant-price]", item)
+      const slug = getItemSlug(item);
+      const productConfig = getProductConfig(slug);
+      const prices = queryAll("[variant-select]", item)
+        .filter((option) => productConfig[getText(option)]?.available)
+        .map((option) => option.closest(".product_variants_item")?.querySelector("[variant-price]"))
+        .filter(Boolean)
         .map(parsePrice)
         .filter((price) => !Number.isNaN(price));
-      if (!prices.length) return;
 
       const box = getDataBox(item);
-      setDataField(box, "pt", [...new Set(prices.map(priceToken))].join(" "));
+      setDataField(box, "pt", prices.length ? [...new Set(prices.map(priceToken))].join(" ") : unpricedToken);
       prices.forEach((price) => priceMap.set(priceToken(price), price));
     });
 
@@ -839,11 +864,13 @@
     hiddenFilters.className = "ptf";
     hiddenFilters.style.cssText = "position:absolute;left:-9999rem;opacity:0;pointer-events:none";
 
-    sortedPrices.concat([["_", Number.NaN]]).forEach(([token, price]) => {
+    sortedPrices.concat([[unpricedToken, Number.NaN], [noMatchToken, Number.NaN]]).forEach(([token, price]) => {
       const input = document.createElement("input");
       input.type = "checkbox";
       input.name = "pt";
       input._price = price;
+      input.setAttribute("aria-hidden", "true");
+      input.tabIndex = -1;
       setFs(input, "field", "pt");
       setFs(input, "value", token);
       setFs(input, "operator", "contain");
@@ -859,18 +886,29 @@
       const rawMax = parseFloat(toInput.value);
       const min = Number.isFinite(rawMin) ? rawMin : fallbackMin;
       const max = Number.isFinite(rawMax) ? rawMax : fallbackMax;
+      const configuredMin = parseFloat(rangeWrapper.getAttribute("fs-rangeslider-min"));
+      const configuredMax = parseFloat(rangeWrapper.getAttribute("fs-rangeslider-max"));
       const lower = Math.min(min, max);
       const upper = Math.max(min, max);
       const epsilon = 0.005;
       let hasMatch = false;
 
-      queryAll("input", hiddenFilters).forEach((input) => {
+      queryAll("input", hiddenFilters).slice(0, -2).forEach((input) => {
         const inRange = input._price >= lower - epsilon && input._price <= upper + epsilon;
         input.checked = inRange;
         hasMatch = hasMatch || inRange;
       });
 
-      hiddenFilters.lastChild.checked = !hasMatch;
+      const fullRange =
+        Number.isFinite(configuredMin) &&
+        Number.isFinite(configuredMax) &&
+        lower <= configuredMin + epsilon &&
+        upper >= configuredMax - epsilon;
+      const unpricedInput = hiddenFilters.children[hiddenFilters.children.length - 2];
+      const noMatchInput = hiddenFilters.lastChild;
+
+      unpricedInput.checked = fullRange;
+      noMatchInput.checked = !hasMatch && !fullRange;
       triggerChange(hiddenFilters.firstChild);
     };
 
@@ -926,7 +964,11 @@
     const setQty = (card, nextQty) => {
       const { value } = getQtyParts(card);
       const qty = Math.max(1, Math.min(99, parseInt(nextQty, 10) || 1));
-      if (value) value.textContent = qty;
+      if (value) {
+        value.textContent = qty;
+        value.setAttribute("role", "status");
+        value.setAttribute("aria-atomic", "true");
+      }
       return qty;
     };
 
