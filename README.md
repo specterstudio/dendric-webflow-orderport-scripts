@@ -128,3 +128,17 @@ Phase 2 Webflow work still needed:
 - Publish once, then run end-to-end mobile and desktop testing.
 - Fully verify guest checkout after the `/cart` handoff.
 - Add any checkout-page messaging that can only be changed in OrderPort.
+
+## Phase 2 Shop Readiness Follow-up
+
+The follow-up shop repair keeps invalid purchasing UI out of view while OrderPort loads:
+
+- Product prices and Coming Soon states are initialized immediately from the repository configuration.
+- Quantity and Add to Cart controls remain hidden until the OrderPort web components are ready.
+- A failed OrderPort startup does not enable purchasing controls.
+- CMS cards without product links resolve through the configured product name map, so product-type filtering does not require a separate inline Webflow patch.
+- Size filter metadata contains only variants with an available OrderPort SKU. Current Coming Soon products are excluded from purchasable-size results.
+
+The Shop page's Finsweet range slider should use `min="9"`, `max="80"`, `step="1"`, and handle starts of `9` and `80`. Finsweet v2 checks decimal steps using floating-point remainder, which produces console errors and shifts the `$9.95` lower bound even when the decimal values are mathematically aligned.
+
+After this follow-up is merged, update only the Shop page's script pin and SRI hash to the new merge commit. Remove the temporary inline `applyProductTypes` patch because the hosted script now supplies product types for all configured cards. Save these Webflow changes without publishing until staging verification is explicitly authorized.

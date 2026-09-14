@@ -165,3 +165,21 @@ const runScript = (filename) => {
     assert.equal(image.style.webkitUserDrag, "none");
   });
 });
+
+test("shop catalog resolves unlinked CMS cards by their configured product names", () => {
+  const { context } = runScript("dendric-shop-op.js");
+  const catalog = context.window.__dendricShopCatalog;
+
+  assert.equal(catalog.getProductSlugByName("Dry Cut"), "dry-cut");
+  assert.equal(catalog.getProductSlugByName("Cider - 02/03"), "cider---02-03");
+  assert.equal(catalog.getProductType("cider---03-03"), "Ciders");
+});
+
+test("shop size metadata includes only purchasable variants", () => {
+  const { context } = runScript("dendric-shop-op.js");
+  const catalog = context.window.__dendricShopCatalog;
+
+  assert.deepEqual(Array.from(catalog.getAvailableSizes("dry-cut")), ["375 ML", "750 ML"]);
+  assert.deepEqual(Array.from(catalog.getAvailableSizes("cider---02-03")), []);
+  assert.deepEqual(Array.from(catalog.getAvailableSizes("cider---03-03")), []);
+});

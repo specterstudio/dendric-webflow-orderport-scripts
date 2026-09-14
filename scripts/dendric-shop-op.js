@@ -7,6 +7,12 @@
     "cider---03-03": "Ciders",
   };
 
+  const productSlugByName = {
+    "Dry Cut": "dry-cut",
+    "Cider - 02/03": "cider---02-03",
+    "Cider - 03/03": "cider---03-03",
+  };
+
   const productMap = {
     "dry-cut": {
       "375 ML": { sku: "88884729-0002", available: true },
@@ -162,8 +168,10 @@
 
   const getItemSlug = (item) => {
     const link = item.querySelector("a[href*='/products/']");
-    if (!link) return "";
-    return new URL(link.href, window.location.href).pathname.split("/").filter(Boolean).pop();
+    if (link) return new URL(link.href, window.location.href).pathname.split("/").filter(Boolean).pop();
+
+    const name = getText(item.querySelector(".products_cms_name > div") || item.querySelector(".products_cms_name"));
+    return productSlugByName[name] || "";
   };
 
   const getDataBox = (item) => {
@@ -188,8 +196,19 @@
   };
 
   const getProductConfig = (slug) => productMap[slug] || {};
+  const getAvailableSizes = (slug) => {
+    return Object.entries(getProductConfig(slug))
+      .filter(([, variant]) => variant?.sku && variant.available)
+      .map(([size]) => size);
+  };
   const hasAvailableVariant = (slug) => {
     return Object.values(getProductConfig(slug)).some((variant) => variant?.sku && variant.available);
+  };
+
+  window.__dendricShopCatalog = {
+    getAvailableSizes,
+    getProductSlugByName: (name) => productSlugByName[name] || "",
+    getProductType: (slug) => productTypeBySlug[slug] || "",
   };
 
   const ensureOrderPortShell = () => {
@@ -251,7 +270,9 @@
       const existing = document.querySelector("script[data-dendric-op-startup]");
 
       const finish = () => {
-        waitForOrderPortElements().then(resolve).catch(resolve);
+        waitForOrderPortElements()
+          .then(() => resolve(true))
+          .catch(() => resolve(false));
       };
 
       if (existing) {
@@ -263,7 +284,7 @@
       script.src = "https://dendricestate.orderport.net/web-components/startup.js?v=1.7";
       script.setAttribute("data-dendric-op-startup", "true");
       script.addEventListener("load", finish, { once: true });
-      script.addEventListener("error", resolve, { once: true });
+      script.addEventListener("error", () => resolve(false), { once: true });
       document.body.append(script);
     });
 
@@ -775,9 +796,7 @@
     list.querySelectorAll(".products_cms_item").forEach((item) => {
       const slug = getItemSlug(item);
       const productType = productTypeBySlug[slug];
-      const configuredSizes = Object.keys(getProductConfig(slug));
-      const cmsSizes = queryAll("[variant-size]", item).map((element) => getText(element)).filter(Boolean);
-      const sizes = cmsSizes.length ? cmsSizes : configuredSizes;
+      const sizes = getAvailableSizes(slug);
 
       const box = getDataBox(item);
       if (productType) setDataField(box, "product-type", productType);
@@ -866,9 +885,9 @@
 
   const setupShopOrderPortCards = () => {
     const shop = document.querySelector(".shop_wrap");
-    if (!shop || shop.dataset.dendricOpCardsReady) return;
+    if (!shop) return;
 
-    shop.dataset.dendricOpCardsReady = "true";
+    if (!shop.dataset.dendricOpCardsReady) shop.dataset.dendricOpCardsReady = "true";
 
     const formatPrice = (value) => {
       const price = parseFloat(String(value).replace(/[^0-9.-]/g, ""));
@@ -963,17 +982,19 @@
       const addWrap = card.querySelector("[op-card-add], .products_main_addtocart");
       const clickable = addWrap?.querySelector(".clickable_btn,button,a");
       const { qtyWrap } = getQtyParts(card);
+      const runtimeReady = shop.dataset.dendricOpRuntimeReady === "true";
+      const canAdd = selection.available && runtimeReady;
 
       setButtonText(card, selection.label);
 
-      addWrap?.classList.toggle("is-disabled", !selection.available);
-      addWrap?.setAttribute("aria-disabled", selection.available ? "false" : "true");
-      addWrap?.style.setProperty("display", "");
-      qtyWrap?.style.setProperty("display", selection.available ? "" : "none");
+      addWrap?.classList.toggle("is-disabled", !canAdd);
+      addWrap?.setAttribute("aria-disabled", canAdd ? "false" : "true");
+      addWrap?.style.setProperty("display", canAdd ? "" : "none");
+      qtyWrap?.style.setProperty("display", canAdd ? "" : "none");
 
       if (clickable) {
-        clickable.disabled = !selection.available;
-        clickable.setAttribute("aria-disabled", selection.available ? "false" : "true");
+        clickable.disabled = !canAdd;
+        clickable.setAttribute("aria-disabled", canAdd ? "false" : "true");
       }
 
       if (priceElement && option) {
@@ -986,7 +1007,10 @@
     };
 
     shop.querySelectorAll(".products_cms_item").forEach((card) => {
-      if (card.dataset.dendricOpCardReady) return;
+      if (card.dataset.dendricOpCardReady) {
+        syncCard(card);
+        return;
+      }
       card.dataset.dendricOpCardReady = "true";
 
       const slug = getItemSlug(card);
@@ -1057,6 +1081,21 @@
 
       syncCard(card);
     });
+
+    if (!shop.dataset.dendricOpCardsObserverReady) {
+      const list = shop.querySelector(".products_cms_grid");
+      if (!list) return;
+
+      shop.dataset.dendricOpCardsObserverReady = "true";
+      new MutationObserver((mutations) => {
+        const hasProductCards = mutations.some((mutation) => {
+          return [...mutation.addedNodes].some((node) => {
+            return node.nodeType === 1 && (node.matches?.(".products_cms_item") || node.querySelector?.(".products_cms_item"));
+          });
+        });
+        if (hasProductCards) requestAnimationFrame(setupShopOrderPortCards);
+      }).observe(list, { childList: true, subtree: true });
+    }
   };
 
   setupShopGridGuard();
@@ -1068,8 +1107,12 @@
     setupProductFilters();
     setupNavOrderPort();
     setupPriceFilters();
+    setupShopOrderPortCards();
     window.setTimeout(setupPriceFilters, 600);
-    loadOrderPortStartup().then(() => {
+    loadOrderPortStartup().then((runtimeReady) => {
+      if (!runtimeReady) return;
+      const shop = document.querySelector(".shop_wrap");
+      if (shop) shop.dataset.dendricOpRuntimeReady = "true";
       setupOrderPortCartHandoff();
       setupNavCartCount();
       setupShopOrderPortCards();
