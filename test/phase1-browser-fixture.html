@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Dendric Phase 1 Browser Fixture</title>
+    <script>
+      window.FinsweetAttributes = {
+        modules: {
+          list: {
+            restart() {
+              window.__finsweetRestartCount = (window.__finsweetRestartCount || 0) + 1;
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body>
+    <main class="shop_wrap">
+      <aside class="shop_filters">
+        <a class="shop_category_item" href="#">All Products</a>
+        <label><input class="form_ui_input" type="checkbox" name="Ciders"> Ciders</label>
+        <label><input class="form_ui_input" type="checkbox" name="Dry Cut"> Dry Cut</label>
+        <input id="From" type="text" min="9.95" max="80" value="9.95">
+        <input id="To" type="text" min="9.95" max="80" value="80">
+      </aside>
+      <section class="products_cms_grid">
+        <article class="products_cms_item">
+          <a href="/products/dry-cut">Dry Cut</a>
+          <span variant-price>$9.95</span>
+          <span variant-price>$80.00</span>
+          <span variant-size>375 ML</span>
+          <span variant-size>750 ML</span>
+        </article>
+        <article class="products_cms_item">
+          <a href="/products/cider---02-03">Cider 02/03</a>
+          <span variant-price>$24.00</span>
+          <span variant-size>750 ML</span>
+        </article>
+      </section>
+    </main>
+    <a id="checkout" href="https://dendricestate.orderport.net/cart/checkout?altsid=fixture-session">Proceed to Checkout</a>
+    <img id="dynamic-image" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="">
+    <script src="../scripts/dendric-shop-op.js"></script>
+    <pre id="phase1-results"></pre>
+    <script>
+      (async () => {
+        const waitFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+        await waitFrame();
+
+        const grid = document.querySelector(".products_cms_grid");
+        const ciders = document.querySelector("input[fs-list-value='Ciders']");
+        const image = document.querySelector("#dynamic-image");
+        const checkout = document.querySelector("#checkout");
+        const hiddenPrices = [...document.querySelectorAll(".ptf input")].map((input) => ({
+          value: input.getAttribute("fs-list-value"),
+          price: Number.isNaN(input._price) ? null : input._price,
+          checked: input.checked,
+        }));
+
+        const initialCount = grid.querySelectorAll(".products_cms_item").length;
+
+        grid.replaceChildren();
+        window.__dendricShopGridGuard.restore();
+        await waitFrame();
+        const restoredWithoutFilters = grid.querySelectorAll(".products_cms_item").length;
+
+        ciders.checked = true;
+        const restoredItems = [...grid.children];
+        grid.replaceChildren();
+        window.__dendricShopGridGuard.restore();
+        await waitFrame();
+        const restoredWithActiveFilter = grid.querySelectorAll(".products_cms_item").length;
+
+        ciders.checked = false;
+        grid.replaceChildren(...restoredItems);
+
+        document.querySelector("#phase1-results").textContent = JSON.stringify(
+          {
+            checkoutHref: checkout.href,
+            checkoutLabel: checkout.textContent.trim(),
+            checkoutDataset: checkout.dataset.dendricOpCheckoutHandoff,
+            imageDraggableAttribute: image.getAttribute("draggable"),
+            imageDraggableProperty: image.draggable,
+            imageWebkitUserDrag: image.style.webkitUserDrag,
+            hiddenPrices,
+            initialCount,
+            restoredWithoutFilters,
+            restoredWithActiveFilter,
+            finsweetRestarts: window.__finsweetRestartCount || 0,
+          },
+          null,
+          2,
+        );
+      })();
+    </script>
+  </body>
+</html>

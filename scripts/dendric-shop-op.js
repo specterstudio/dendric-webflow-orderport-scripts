@@ -36,6 +36,7 @@
 
   let orderPortReadyPromise;
   let orderPortApiSessionPromise;
+  let finsweetRestartTimer;
 
   const ready = (fn) => {
     document.readyState === "loading"
@@ -46,6 +47,7 @@
   const queryAll = (selector, scope = document) => [...scope.querySelectorAll(selector)];
   const getText = (element) => (element?.textContent || "").replace(/\s+/g, " ").trim();
   const setFs = (element, key, value) => element.setAttribute(`fs-list-${key}`, value);
+  const ORDERPORT_ORIGIN = "https://dendricestate.orderport.net";
 
   const createElement = (tag, attrs = {}) => {
     const element = document.createElement(tag);
@@ -64,6 +66,33 @@
     else finsweet?.load?.("list");
   };
 
+  const scheduleFinsweetListRestart = (delay = 120) => {
+    window.clearTimeout(finsweetRestartTimer);
+    finsweetRestartTimer = window.setTimeout(restartFinsweetList, delay);
+  };
+
+  const hasActiveShopFilters = () => {
+    const filterForm = document.querySelector(".shop_wrap [fs-list-element='filters']");
+    if (!filterForm) return false;
+
+    const hasVisibleCheckbox = queryAll("input[type='checkbox']", filterForm).some((input) => {
+      return input.checked && !input.closest(".ptf");
+    });
+    if (hasVisibleCheckbox) return true;
+
+    const fromInput = document.querySelector("#From");
+    const toInput = document.querySelector("#To");
+    const fromValue = Number.parseFloat(fromInput?.value);
+    const toValue = Number.parseFloat(toInput?.value);
+    const fromMin = Number.parseFloat(fromInput?.min);
+    const toMax = Number.parseFloat(toInput?.max);
+
+    if (Number.isFinite(fromValue) && Number.isFinite(fromMin) && fromValue > fromMin) return true;
+    if (Number.isFinite(toValue) && Number.isFinite(toMax) && toValue < toMax) return true;
+
+    return false;
+  };
+
   const setupShopGridGuard = () => {
     if (window.__dendricShopGridGuard) return;
 
@@ -73,7 +102,6 @@
     let cachedItems = [];
     let observer;
     let restoring = false;
-    let stopped = false;
     const timers = [];
 
     const getItems = () => {
@@ -87,14 +115,15 @@
     };
 
     const restore = () => {
-      if (stopped || restoring) return;
+      if (restoring) return;
 
       const items = capture();
       if (items.length) {
-        if (grid.style.display === "none") grid.style.display = "";
+        if (!hasActiveShopFilters() && grid.style.display === "none") grid.style.display = "";
         return;
       }
 
+      if (hasActiveShopFilters()) return;
       if (!cachedItems.length) return;
 
       restoring = true;
@@ -104,23 +133,15 @@
       grid.style.display = "";
 
       requestAnimationFrame(() => {
-        restartFinsweetList();
+        scheduleFinsweetListRestart();
         restoring = false;
         capture();
       });
     };
 
-    const stop = () => {
-      if (stopped) return;
-      stopped = true;
+    const disconnect = () => {
       observer?.disconnect();
       timers.forEach((timer) => window.clearTimeout(timer));
-      document.removeEventListener("pointerdown", stopForFiltering, true);
-      document.removeEventListener("input", stopForFiltering, true);
-    };
-
-    const stopForFiltering = (event) => {
-      if (event.target.closest(".shop_filters, #From, #To")) stop();
     };
 
     capture();
@@ -136,11 +157,7 @@
       attributeFilter: ["style"],
     });
 
-    document.addEventListener("pointerdown", stopForFiltering, true);
-    document.addEventListener("input", stopForFiltering, true);
-    timers.push(window.setTimeout(stop, 6500));
-
-    window.__dendricShopGridGuard = { restore, stop };
+    window.__dendricShopGridGuard = { restore, disconnect };
   };
 
   const getItemSlug = (item) => {
@@ -251,6 +268,180 @@
     });
 
     return orderPortReadyPromise;
+  };
+
+  const setupOrderPortCartHandoff = () => {
+    const bridgeKey = "__dendricOpCartHandoff";
+    const existingBridge = window[bridgeKey];
+
+    if (existingBridge) {
+      existingBridge.start();
+      return;
+    }
+
+    let observer;
+    const observedRoots = new WeakSet();
+    const label = "Review Cart & Checkout";
+
+    const getReviewCartUrl = (href) => {
+      if (!href) return "";
+
+      try {
+        const url = new URL(href, ORDERPORT_ORIGIN);
+        if (url.origin !== ORDERPORT_ORIGIN) return "";
+
+        const path = url.pathname.replace(/\/+$/, "").toLowerCase();
+        if (path !== "/cart/checkout") return "";
+
+        url.pathname = "/cart";
+        return url.href;
+      } catch (error) {
+        return "";
+      }
+    };
+
+    const labelCheckoutLink = (anchor) => {
+      const textTarget = anchor.querySelector(".button_main_text,span,button") || anchor;
+      if (getText(textTarget) && /checkout|proceed/i.test(getText(textTarget))) {
+        textTarget.textContent = label;
+      }
+
+      anchor.setAttribute("aria-label", label);
+      anchor.setAttribute("title", label);
+    };
+
+    const patchCheckoutLink = (anchor) => {
+      if (!anchor?.matches?.("a[href]")) return;
+
+      const href = anchor.getAttribute("href");
+      const reviewCartUrl = getReviewCartUrl(href || anchor.href);
+      if (!reviewCartUrl) return;
+
+      anchor.href = reviewCartUrl;
+      anchor.dataset.dendricOpCheckoutHandoff = "true";
+      labelCheckoutLink(anchor);
+
+      if (anchor.dataset.dendricOpCheckoutClickReady) return;
+      anchor.dataset.dendricOpCheckoutClickReady = "true";
+
+      anchor.addEventListener("click", (event) => {
+        const targetUrl = anchor.href;
+        if (!targetUrl) return;
+
+        event.preventDefault();
+        window.location.assign(targetUrl);
+      });
+    };
+
+    const scan = (scope = document) => {
+      if (!scope?.querySelectorAll) return;
+
+      if (scope.matches?.("a[href]")) patchCheckoutLink(scope);
+      queryAll("a[href]", scope).forEach(patchCheckoutLink);
+      queryAll("op-side-cart,op-side-cart-details", scope).forEach((element) => {
+        if (element.shadowRoot) scan(element.shadowRoot);
+      });
+    };
+
+    const observe = (root) => {
+      if (!root || observedRoots.has(root)) return;
+      observedRoots.add(root);
+      observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
+    };
+
+    const start = () => {
+      if (!document.body) return;
+
+      if (!observer) {
+        observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            if (mutation.type === "attributes") {
+              patchCheckoutLink(mutation.target);
+              return;
+            }
+
+            mutation.addedNodes.forEach((node) => {
+              if (node.nodeType !== 1) return;
+              scan(node);
+              if (node.shadowRoot) {
+                scan(node.shadowRoot);
+                observe(node.shadowRoot);
+              }
+            });
+          });
+        });
+      }
+
+      observe(document.body);
+      queryAll("op-side-cart,op-side-cart-details").forEach((element) => {
+        scan(element);
+        if (element.shadowRoot) {
+          scan(element.shadowRoot);
+          observe(element.shadowRoot);
+        }
+      });
+      scan(document);
+    };
+
+    window[bridgeKey] = { start, scan, getReviewCartUrl };
+    start();
+  };
+
+  const setupImageDragPrevention = () => {
+    const bridgeKey = "__dendricImageDragPrevention";
+    const existingBridge = window[bridgeKey];
+
+    if (existingBridge) {
+      existingBridge.start();
+      return;
+    }
+
+    let observer;
+
+    const isAllowedDragImage = (image) => image.closest("[data-dendric-allow-image-drag]");
+
+    const patchImage = (image) => {
+      if (isAllowedDragImage(image)) return;
+      image.draggable = false;
+      image.setAttribute("draggable", "false");
+      image.style.webkitUserDrag = "none";
+    };
+
+    const scan = (scope = document) => {
+      if (!scope?.querySelectorAll) return;
+      if (scope.matches?.("img")) patchImage(scope);
+      queryAll("img", scope).forEach(patchImage);
+    };
+
+    const start = () => {
+      if (!document.body) return;
+
+      scan(document);
+
+      if (!observer) {
+        observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+              if (node.nodeType === 1) scan(node);
+            });
+          });
+        });
+
+        document.addEventListener(
+          "dragstart",
+          (event) => {
+            const image = event.target?.closest?.("img");
+            if (image && !isAllowedDragImage(image)) event.preventDefault();
+          },
+          true,
+        );
+      }
+
+      observer.observe(document.body, { childList: true, subtree: true });
+    };
+
+    window[bridgeKey] = { start, scan };
+    start();
   };
 
   const clickOrderPortCartToggle = () => {
@@ -593,7 +784,7 @@
       if (sizes.length) setDataField(box, "size", [...new Set(sizes)].join(" "));
     });
 
-    restartFinsweetList();
+    scheduleFinsweetListRestart();
   };
 
   const setupPriceFilters = () => {
@@ -643,12 +834,19 @@
     filterForm.append(hiddenFilters);
 
     const updatePriceFilter = () => {
-      const min = parseFloat(fromInput.value) - 0.02;
-      const max = parseFloat(toInput.value) + 0.02;
+      const fallbackMin = sortedPrices[0][1];
+      const fallbackMax = sortedPrices[sortedPrices.length - 1][1];
+      const rawMin = parseFloat(fromInput.value);
+      const rawMax = parseFloat(toInput.value);
+      const min = Number.isFinite(rawMin) ? rawMin : fallbackMin;
+      const max = Number.isFinite(rawMax) ? rawMax : fallbackMax;
+      const lower = Math.min(min, max);
+      const upper = Math.max(min, max);
+      const epsilon = 0.005;
       let hasMatch = false;
 
       queryAll("input", hiddenFilters).forEach((input) => {
-        const inRange = input._price >= min && input._price <= max;
+        const inRange = input._price >= lower - epsilon && input._price <= upper + epsilon;
         input.checked = inRange;
         hasMatch = hasMatch || inRange;
       });
@@ -663,7 +861,7 @@
     toInput.addEventListener("change", updatePriceFilter);
 
     updatePriceFilter();
-    restartFinsweetList();
+    scheduleFinsweetListRestart();
   };
 
   const setupShopOrderPortCards = () => {
@@ -865,10 +1063,14 @@
 
   ready(() => {
     ensureOrderPortShell();
+    setupImageDragPrevention();
+    setupOrderPortCartHandoff();
     setupProductFilters();
     setupNavOrderPort();
+    setupPriceFilters();
     window.setTimeout(setupPriceFilters, 600);
     loadOrderPortStartup().then(() => {
+      setupOrderPortCartHandoff();
       setupNavCartCount();
       setupShopOrderPortCards();
       window.setTimeout(setupShopOrderPortCards, 900);
