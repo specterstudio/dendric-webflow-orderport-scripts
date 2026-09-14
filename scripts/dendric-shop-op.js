@@ -213,6 +213,7 @@
   };
 
   const getProductConfig = (slug) => productMap[slug] || {};
+  const getProductType = (slug) => productTypeBySlug[slug] || "";
   const getAvailableSizes = (slug) => {
     return Object.entries(getProductConfig(slug))
       .filter(([, variant]) => variant?.sku && variant.available)
@@ -225,7 +226,7 @@
   window.__dendricShopCatalog = {
     getAvailableSizes,
     getProductSlugByName: (name) => productSlugByName[name] || "",
-    getProductType: (slug) => productTypeBySlug[slug] || "",
+    getProductType,
     isPriceRangeActive,
   };
 
@@ -785,6 +786,10 @@
 
     const filterInputs = queryAll("input[fs-list-field]", filterForm);
 
+    filterInputs.forEach((input) => {
+      input.addEventListener("change", applyShopFilters);
+    });
+
     shop.querySelectorAll(".shop_category_item").forEach((item) => {
       item.addEventListener("click", (event) => {
         const label = item.textContent.trim();
@@ -808,6 +813,7 @@
 
         if (target && !target.checked) target.click();
         if (!target && filterInputs[0]) triggerChange(filterInputs[0]);
+        applyShopFilters();
       });
     });
 
@@ -821,7 +827,70 @@
       if (sizes.length) setDataField(box, "size", [...new Set(sizes)].join(" "));
     });
 
-    scheduleFinsweetListRestart();
+    applyShopFilters();
+  };
+
+  const applyShopFilters = () => {
+    const shop = document.querySelector(".shop_wrap");
+    const filterForm = shop?.querySelector("[fs-list-element='filters']");
+    const fromInput = document.querySelector("#From");
+    const toInput = document.querySelector("#To");
+    const rangeWrapper = fromInput?.closest("[fs-rangeslider-element='wrapper']");
+
+    if (!shop || !filterForm || !fromInput || !toInput || !rangeWrapper) return;
+
+    const activeTypes = [];
+    const activeSizes = [];
+    queryAll("input[type='checkbox'][fs-list-field]", filterForm).forEach((input) => {
+      if (!input.checked) return;
+      var field = input.getAttribute("fs-list-field");
+      var value = input.getAttribute("fs-list-value");
+      if (field === "product-type") activeTypes.push(value);
+      if (field === "size") activeSizes.push(value);
+    });
+
+    const configuredMin = rangeWrapper.getAttribute("fs-rangeslider-min");
+    const configuredMax = rangeWrapper.getAttribute("fs-rangeslider-max");
+    const rangeActive = isPriceRangeActive(fromInput.value, toInput.value, configuredMin, configuredMax);
+    const lower = Math.min(Number.parseFloat(fromInput.value), Number.parseFloat(toInput.value));
+    const upper = Math.max(Number.parseFloat(fromInput.value), Number.parseFloat(toInput.value));
+    const parsePrice = (element) => parseFloat(element.textContent.replace(/[^0-9.-]/g, ""));
+    let visibleCount = 0;
+
+    queryAll(".products_cms_item", shop).forEach((item) => {
+      const slug = getItemSlug(item);
+      const productConfig = getProductConfig(slug);
+      const productType = getProductType(slug);
+      const availableSizes = getAvailableSizes(slug);
+      const prices = queryAll("[variant-select]", item)
+        .filter((option) => productConfig[getText(option)]?.available)
+        .map((option) => option.closest(".product_variants_item")?.querySelector("[variant-source='product-price'],[variant-price]"))
+        .filter(Boolean)
+        .map(parsePrice)
+        .filter((price) => !Number.isNaN(price));
+
+      const typeMatch = !activeTypes.length || activeTypes.includes(productType);
+      const sizeMatch = !activeSizes.length || activeSizes.some((size) => availableSizes.includes(size));
+      const priceMatch =
+        !rangeActive || prices.some((price) => price >= lower - 0.005 && price <= upper + 0.005);
+      const matches = typeMatch && sizeMatch && priceMatch;
+
+      item.hidden = !matches;
+      item.style.display = matches ? "" : "none";
+      item.setAttribute("aria-hidden", matches ? "false" : "true");
+      if (matches) visibleCount += 1;
+    });
+
+    let emptyState = shop.querySelector("[data-dendric-filter-empty]");
+    if (!emptyState) {
+      emptyState = document.createElement("p");
+      emptyState.dataset.dendricFilterEmpty = "true";
+      emptyState.className = "u-text u-text-align-center u-padding-6";
+      emptyState.setAttribute("role", "status");
+      emptyState.textContent = "No products match these filters.";
+      shop.querySelector(".products_cms_wrap")?.append(emptyState);
+    }
+    emptyState.hidden = visibleCount !== 0;
   };
 
   const setupPriceFilters = () => {
@@ -834,91 +903,12 @@
 
     filterForm.dataset.dendricPriceReady = "true";
 
-    const priceMap = new Map();
-    const parsePrice = (element) => parseFloat(element.textContent.replace(/[^0-9.-]/g, ""));
-    const priceToken = (price) => `p${Math.round(price * 100)}`;
-    const unpricedToken = "p-unavailable";
-    const noMatchToken = "p-no-match";
+    fromInput.addEventListener("input", applyShopFilters);
+    fromInput.addEventListener("change", applyShopFilters);
+    toInput.addEventListener("input", applyShopFilters);
+    toInput.addEventListener("change", applyShopFilters);
 
-    queryAll(".shop_wrap .products_cms_item").forEach((item) => {
-      const slug = getItemSlug(item);
-      const productConfig = getProductConfig(slug);
-      const prices = queryAll("[variant-select]", item)
-        .filter((option) => productConfig[getText(option)]?.available)
-        .map((option) => option.closest(".product_variants_item")?.querySelector("[variant-price]"))
-        .filter(Boolean)
-        .map(parsePrice)
-        .filter((price) => !Number.isNaN(price));
-
-      const box = getDataBox(item);
-      setDataField(box, "pt", prices.length ? [...new Set(prices.map(priceToken))].join(" ") : unpricedToken);
-      prices.forEach((price) => priceMap.set(priceToken(price), price));
-    });
-
-    const sortedPrices = [...priceMap].sort((a, b) => a[1] - b[1]);
-    if (!sortedPrices.length) return;
-
-    filterForm.querySelector(".ptf")?.remove();
-
-    const hiddenFilters = document.createElement("div");
-    hiddenFilters.className = "ptf";
-    hiddenFilters.style.cssText = "position:absolute;left:-9999rem;opacity:0;pointer-events:none";
-
-    sortedPrices.concat([[unpricedToken, Number.NaN], [noMatchToken, Number.NaN]]).forEach(([token, price]) => {
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.name = "pt";
-      input._price = price;
-      input.setAttribute("aria-hidden", "true");
-      input.tabIndex = -1;
-      setFs(input, "field", "pt");
-      setFs(input, "value", token);
-      setFs(input, "operator", "contain");
-      hiddenFilters.append(input);
-    });
-
-    filterForm.append(hiddenFilters);
-
-    const updatePriceFilter = () => {
-      const fallbackMin = sortedPrices[0][1];
-      const fallbackMax = sortedPrices[sortedPrices.length - 1][1];
-      const rawMin = parseFloat(fromInput.value);
-      const rawMax = parseFloat(toInput.value);
-      const min = Number.isFinite(rawMin) ? rawMin : fallbackMin;
-      const max = Number.isFinite(rawMax) ? rawMax : fallbackMax;
-      const configuredMin = parseFloat(rangeWrapper.getAttribute("fs-rangeslider-min"));
-      const configuredMax = parseFloat(rangeWrapper.getAttribute("fs-rangeslider-max"));
-      const lower = Math.min(min, max);
-      const upper = Math.max(min, max);
-      const epsilon = 0.005;
-      let hasMatch = false;
-
-      queryAll("input", hiddenFilters).slice(0, -2).forEach((input) => {
-        const inRange = input._price >= lower - epsilon && input._price <= upper + epsilon;
-        input.checked = inRange;
-        hasMatch = hasMatch || inRange;
-      });
-
-      const fullRange =
-        Number.isFinite(configuredMin) &&
-        Number.isFinite(configuredMax) &&
-        lower <= configuredMin + epsilon &&
-        upper >= configuredMax - epsilon;
-      const unpricedInput = hiddenFilters.children[hiddenFilters.children.length - 2];
-      const noMatchInput = hiddenFilters.lastChild;
-
-      unpricedInput.checked = fullRange;
-      noMatchInput.checked = !hasMatch && !fullRange;
-      triggerChange(hiddenFilters.firstChild);
-    };
-
-    fromInput.addEventListener("input", updatePriceFilter);
-    fromInput.addEventListener("change", updatePriceFilter);
-    toInput.addEventListener("input", updatePriceFilter);
-    toInput.addEventListener("change", updatePriceFilter);
-
-    updatePriceFilter();
-    scheduleFinsweetListRestart();
+    applyShopFilters();
   };
 
   const setupShopOrderPortCards = () => {
@@ -1049,6 +1039,12 @@
     };
 
     shop.querySelectorAll(".products_cms_item").forEach((card) => {
+      const quantityValue = card.querySelector("[op-card-qty-value]");
+      if (quantityValue) {
+        quantityValue.setAttribute("role", "status");
+        quantityValue.setAttribute("aria-atomic", "true");
+      }
+
       if (card.dataset.dendricOpCardReady) {
         syncCard(card);
         return;
@@ -1139,8 +1135,6 @@
       }).observe(list, { childList: true, subtree: true });
     }
   };
-
-  setupShopGridGuard();
 
   ready(() => {
     ensureOrderPortShell();
